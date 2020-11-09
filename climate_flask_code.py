@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 import pandas as pd
-import datetime as dt
+# import datetime as dt
 
 
 # # Reflect Tables into SQLAlchemy ORM
@@ -17,10 +17,21 @@ import datetime as dt
 import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, func, inspect
+from sqlalchemy import create_engine, func, inspect, cast, Date
+from datetime import date, datetime
+from flask import Flask, jsonify
 
-engine = create_engine("sqlite:///Resources/hawaii.sqlite")
-connection = engine.connect()
+engine = create_engine("sqlite:///./Resources/hawaii.sqlite")
+
+#extract the queries into pandas dataframes here
+
+
+
+
+
+
+
+
 
 # create a base
 Base = automap_base()
@@ -47,6 +58,7 @@ app = Flask(__name__)
 # Flask Routes
 #################################################
 
+#create a route in the base page which shows all the available routes 
 @app.route("/")
 def welcome():
     """List all available api routes."""
@@ -59,72 +71,83 @@ def welcome():
         f"/api/v1.0/<start>/<end><br/>"
     )
 
-# # Exploratory Climate Analysis
+# create a precipitation route which returns a json list of all of the rain 
+# amounts with their date as the index portion.
+# rather than running a for loop, i use the "to-dict" function to create the dictionary
 
 @app.route("/api/v1.0/precipitation")
 def precipitation():
+    # connection = engine.connect()
+    # session = Session(engine)
+    with engine.connect() as connection:
+        title_df = pd.read_sql("SELECT prcp, date FROM measurement", connection)
+        prcp_dict_list = title_df.set_index('date').T.to_dict('records')
+        prcp_dict = prcp_dict_list[0]
+        # 
+        return jsonify(prcp_dict)
+
+
+#create a route which returns a dictionary of the stations
+@app.route("/api/v1.0/stations")
+def stations():    
     session = Session(engine)
-    # Design a query to retrieve the last 12 months of precipitation data and plot the results
-    title_df = pd.read_sql("SELECT prcp, max(date) as oldest_date FROM measurement", connection)
-    return jsonify(title_df)
+    stations = session.query(Station.station, Station.station).distinct()
+    return jsonify(dict(stations))
+    session.close()
 
-    # Calculate the date 1 year ago from the last data point in the database
-    from sqlalchemy import cast, Date
-    from datetime import date
-    # this is some code i'm trying to get work without manually entering the date
-    latest_date = session.query(Measurement.date).order_by(Measurement.date.desc()).first()[0]
-    # latest_date = session.query(cast(Measurement.date, Date)).order_by(Measurement.date.desc()).first() 
-    date_1_year = date.fromisoformat(latest_date)
-    date_1_yr_ago = date_1_year - dt.timedelta(days=365)
-    date_1_yr_ago
-    # latest_date[0].split('-')
+# return a dictionary of temps from the most active station
+@app.route("/api/v1.0/tobs")
+def tobs():
+    with engine.connect() as connection:
+        most_active_df = pd.read_sql("SELECT tobs, date FROM measurement where station = 'USC00519281'", connection)
+        active_dict_list = most_active_df.set_index('date').T.to_dict('records')
+        # active_dict = active_dict_list[0]
+        # 
+        return jsonify(active_dict_list)
 
-    # Perform a query to retrieve the date and precipitation scores
-    prcp_df = pd.read_sql("SELECT date, prcp FROM measurement", connection)
-
-
-    # Save the query results as a Pandas DataFrame and set the index to the date column
-    prcp_df.set_index('date')
-
-    # Sort the dataframe by date
-    prcp_df.sort_values(by=['date'])
-    prcp_df
-
-    # Use Pandas Plotting with Matplotlib to plot the data
-    prcp_df.plot()
-
-    # Use Pandas to calcualte the summary statistics for the precipitation data
-    summary_table = prcp_df.agg({"prcp":["mean","median","var","std","sem"]})
-    summary_table
-
-    # Design a query to show how many stations are available in this dataset?
-    title_df = pd.read_sql("SELECT DISTINCT station FROM station", connection)
-    len(title_df)
-
-
-    # What are the most active stations? (i.e. what stations have the most rows)?
-    # List the stations and the counts in descending order.
-    sel = [Measurement.id, Measurement.station, Measurement.date, Measurement.prcp, Measurement.tobs]
-    measurement = session.query(Measurement.station, func.count(Measurement.station)).group_by(Measurement.station).order_by(func.count(Measurement.station).desc()).all()
-
-    # list the number of stations for an internal loop
-
-    # loop through the full measurement set to count the number of stations
-
-    # Using the station id from the previous query, calculate the lowest temperature recorded, 
-    # highest temperature recorded, and average temperature of the most active station?
-    temps = session.query(Measurement.station, func.min(Measurement.tobs),                            func.max(Measurement.tobs), func.round(func.avg(Measurement.tobs),2)).                            filter(Measurement.station=='USC00519281').all()
-    temps
-
-    # Choose the station with the highest number of temperature observations.
-    # Query the last 12 months of temperature observation data for this station and plot the results as a histogram
-    prev_year = dt.date(2017, 8, 23) - dt.timedelta(days=365)
-    high_stn = session.query(Measurement.tobs).filter(Measurement.station=='USC00519281', Measurement.date >= prev_year).all()
-    high_stn = np.ravel(high_stn)
+# have an inteeractive route which will return the temp's min, max, and avg from a given date
+@app.route("/api/v1.0/<start>", methods = ['GET'])
+def start_fx(start):
+    session = Session(engine)
+    start_convert = datetime.strptime(start, "%Y-%m-%d").date()
+    # date = dt.date(start)
+    start_list = session.query(Measurement.date, func.min(Measurement.tobs), func.avg(Measurement.tobs),\
+                          func.max(Measurement.tobs)).filter(Measurement.date>=start_convert).all()
+    session.close()
     
-    return jsonify(high_stn)
+    results_list = []
+    for date, min, avg, max in start_list:
+        start_dict = {}
+        start_dict["StartDate"] = start_convert
+        start_dict["TMIN"] = min
+        start_dict["TAVG"] = avg
+        start_dict["TMAX"] = max
+        results_list.append(start_dict)
+    return jsonify(results_list)
+
+# have an inteeractive route which will return the temp's min, max, and avg for a given date range
+@app.route("/api/v1.0/<start>/<end>", methods = ['GET'])
+def start_end_fx(start, end):
+    session = Session(engine)
+    start_convert = datetime.strptime(start, "%Y-%m-%d").date()
+    end_convert = datetime.strptime(start, "%Y-%m-%d").date()
+    # date = dt.date(start)
+    start_list = session.query(Measurement.date, func.min(Measurement.tobs), func.avg(Measurement.tobs),\
+                          func.max(Measurement.tobs)).filter(Measurement.date>=start_convert).filter(Measurement.date<=end_convert).all()
+    session.close()
+    
+    results_list = []
+    for date, min, avg, max in start_list:
+        start_dict = {}
+        start_dict["StartDate"] = start_convert
+        start_dict["EndDate"] = end_convert
+        start_dict["TMIN"] = min
+        start_dict["TAVG"] = avg
+        start_dict["TMAX"] = max
+        results_list.append(start_dict)
+    return jsonify(results_list)
 
 
-# # Flask: see VS Code for it
+
 if __name__ == '__main__':
     app.run(debug=True)

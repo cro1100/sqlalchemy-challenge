@@ -67,3 +67,7 @@ def precipitation():
     # Design a query to retrieve the last 12 months of precipitation data and plot the results
     title_df = pd.read_sql("SELECT prcp, max(date) as oldest_date FROM measurement", connection)
     return jsonify(title_df)
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
