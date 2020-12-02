@@ -23,19 +23,8 @@ from flask import Flask, jsonify
 
 engine = create_engine("sqlite:///./Resources/hawaii.sqlite")
 
-#extract the queries into pandas dataframes here
-
-
-
-
-
-
-
-
-
 # create a base
 Base = automap_base()
-
 
 # reflect an existing database into a new model
 Base.prepare(engine, reflect=True)
@@ -44,7 +33,6 @@ Base.classes.keys()
 Measurement = Base.classes.measurement
 Station = Base.classes.station
 
-
 # # Include inspector
 inspector = inspect(engine)
 
@@ -52,7 +40,6 @@ inspector = inspect(engine)
 # Flask Setup
 #################################################
 app = Flask(__name__)
-
 
 #################################################
 # Flask Routes
@@ -146,8 +133,6 @@ def start_end_fx(start, end):
         start_dict["TMAX"] = max
         results_list.append(start_dict)
     return jsonify(results_list)
-
-
 
 if __name__ == '__main__':
     app.run(debug=True)
